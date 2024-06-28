@@ -1,11 +1,11 @@
-const sequelize = require('./db');
-const {DataTypes} = require('sequelize');
+const mongoose = require("mongoose");
+const { Schema } = mongoose;
 
-const User = sequelize.define('user', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, unique: true, autoIncrement: true},
-    chatId: {type: DataTypes.STRING, unique: true},
-    right: {type: DataTypes.INTEGER, defaultValue: 0},
-    wrong: {type: DataTypes.INTEGER, defaultValue: 0},
-})
+const ExitSchema = new Schema({
+  licensePlate: { type: String, required: true },
+  exitTime: { type: Date, default: Date.now },
+});
 
-module.exports = User;
+const ExitModel = mongoose.model("Exit", ExitSchema);
+
+module.exports = ExitModel;

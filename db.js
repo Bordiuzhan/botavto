@@ -1,12 +1,9 @@
-const {Sequelize} = require('sequelize');
+const mongoose = require('mongoose');
 
-module.exports = new Sequelize(
-    'telega_bot',
-    'root',
-    'root',
-    {
-        host: '5.188.128.98',
-        port: '6432',
-        dialect: 'postgres'
-    }
-)
+const uri = 'mongodb+srv://Oleks:freedom2023@atlascluster.e88hnna.mongodb.net/?retryWrites=true&w=majority&appName=AtlasCluster';
+
+mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Успішно підключено до MongoDB'))
+    .catch((e) => console.log('Підключення до MongoDB не вдалося', e));
+
+module.exports = mongoose;

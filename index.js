@@ -1,77 +1,73 @@
-const TelegramApi = require('node-telegram-bot-api')
-const {gameOptions, againOptions} = require('./options')
-const sequelize = require('./db');
-const UserModel = require('./models');
+const TelegramApi = require("node-telegram-bot-api");
+const mongoose = require("./db");
+const ExitModel = require("./models");
+const Bluebird = require("bluebird");
+const { registerOptions, viewExitsOptions } = require("./options");
 
-const token = '1702630643:AAHXiY0MRDKeF1XcuGTxWmpgdcCdAgzt4gE'
+const token = "7459932806:AAGQK0mqSOkt-AuH5AgXw3szzzCHbY6vpgk";
 
-const bot = new TelegramApi(token, {polling: true})
-
-const chats = {}
-
-
-const startGame = async (chatId) => {
-    await bot.sendMessage(chatId, `Сейчас я загадаю цифру от 0 до 9, а ты должен ее угадать!`);
-    const randomNumber = Math.floor(Math.random() * 10)
-    chats[chatId] = randomNumber;
-    await bot.sendMessage(chatId, 'Отгадывай', gameOptions);
-}
+const bot = new TelegramApi(token, { polling: true });
+bot.Promise = Bluebird;
+Bluebird.config({
+  cancellation: true,
+});
 
 const start = async () => {
+  try {
+    // Підключення до MongoDB вже виконується в db.js
+  } catch (e) {
+    console.log("Підключення до БД не вдалося", e);
+  }
+
+  bot.setMyCommands([
+    { command: "/start", description: "Початкове вітання" },
+    { command: "/register", description: "Реєстрація виїзду автомобіля" },
+    { command: "/view_exits", description: "Перегляд всіх виїздів" },
+  ]);
+
+  bot.on("message", async (msg) => {
+    const text = msg.text;
+    const chatId = msg.chat.id;
 
     try {
-        await sequelize.authenticate()
-        await sequelize.sync()
+      if (text === "/start") {
+        return bot.sendMessage(
+          chatId,
+          `Ласкаво просимо до системи реєстрації виїзду автомобілів! Використовуйте команду /register для реєстрації виїзду, або /view_exits для перегляду всіх виїздів.`,
+        );
+      }
+      if (text === "/register") {
+        await bot.sendMessage(chatId, "Введіть номерний знак автомобіля:");
+        bot.once("message", async (msg) => {
+          const licensePlate = msg.text;
+          const exit = new ExitModel({ licensePlate });
+          await exit.save();
+          return bot.sendMessage(
+            chatId,
+            `Виїзд автомобіля з номером ${licensePlate} успішно зареєстровано!`,
+          );
+        });
+        return;
+      }
+      if (text === "/view_exits") {
+        const exits = await ExitModel.find();
+        if (exits.length === 0) {
+          return bot.sendMessage(
+            chatId,
+            "На даний момент немає зареєстрованих виїздів.",
+          );
+        }
+        let response = "Список зареєстрованих виїздів:\n";
+        exits.forEach((exit, index) => {
+          response += `${index + 1}. Номерний знак: ${exit.licensePlate}, Час виїзду: ${exit.exitTime}\n`;
+        });
+        return bot.sendMessage(chatId, response);
+      }
+      return bot.sendMessage(chatId, "Я тебе не розумію, спробуй ще раз!)");
     } catch (e) {
-        console.log('Подключение к бд сломалось', e)
+      return bot.sendMessage(chatId, "Сталася якась помилка!)");
     }
+  });
+};
 
-    bot.setMyCommands([
-        {command: '/start', description: 'Начальное приветствие'},
-        {command: '/info', description: 'Получить информацию о пользователе'},
-        {command: '/game', description: 'Игра угадай цифру'},
-    ])
-
-    bot.on('message', async msg => {
-        const text = msg.text;
-        const chatId = msg.chat.id;
-
-        try {
-            if (text === '/start') {
-                await UserModel.create({chatId})
-                await bot.sendSticker(chatId, 'https://tlgrm.ru/_/stickers/ea5/382/ea53826d-c192-376a-b766-e5abc535f1c9/7.webp')
-                return bot.sendMessage(chatId, `Добро пожаловать в телеграм бот автора ютуб канала ULBI TV`);
-            }
-            if (text === '/info') {
-                const user = await UserModel.findOne({chatId})
-                return bot.sendMessage(chatId, `Тебя зовут ${msg.from.first_name} ${msg.from.last_name}, в игре у тебя правильных ответов ${user.right}, неправильных ${user.wrong}`);
-            }
-            if (text === '/game') {
-                return startGame(chatId);
-            }
-            return bot.sendMessage(chatId, 'Я тебя не понимаю, попробуй еще раз!)');
-        } catch (e) {
-            return bot.sendMessage(chatId, 'Произошла какая то ошибочка!)');
-        }
-
-    })
-
-    bot.on('callback_query', async msg => {
-        const data = msg.data;
-        const chatId = msg.message.chat.id;
-        if (data === '/again') {
-            return startGame(chatId)
-        }
-        const user = await UserModel.findOne({chatId})
-        if (data == chats[chatId]) {
-            user.right += 1;
-            await bot.sendMessage(chatId, `Поздравляю, ты отгадал цифру ${chats[chatId]}`, againOptions);
-        } else {
-            user.wrong += 1;
-            await bot.sendMessage(chatId, `К сожалению ты не угадал, бот загадал цифру ${chats[chatId]}`, againOptions);
-        }
-        await user.save();
-    })
-}
-
-start()
+start();
