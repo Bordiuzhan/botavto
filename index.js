@@ -1,16 +1,19 @@
+require("dotenv").config();
+
 const TelegramApi = require("node-telegram-bot-api");
 const mongoose = require("./db");
 const ExitModel = require("./models");
 const Bluebird = require("bluebird");
-const { registerOptions, viewExitsOptions } = require("./options");
 
-const token = "7459932806:AAGQK0mqSOkt-AuH5AgXw3szzzCHbY6vpgk";
+const token = process.env.TELEGRAM_TOKEN;
 
 const bot = new TelegramApi(token, { polling: true });
 bot.Promise = Bluebird;
 Bluebird.config({
   cancellation: true,
 });
+
+let awaitingLicensePlate = {};
 
 const start = async () => {
   try {
@@ -19,7 +22,7 @@ const start = async () => {
     console.log("Підключення до БД не вдалося", e);
   }
 
-  bot.setMyCommands([
+  await bot.setMyCommands([
     { command: "/start", description: "Початкове вітання" },
     { command: "/register", description: "Реєстрація виїзду автомобіля" },
     { command: "/view_exits", description: "Перегляд всіх виїздів" },
@@ -30,24 +33,26 @@ const start = async () => {
     const chatId = msg.chat.id;
 
     try {
+      if (awaitingLicensePlate[chatId]) {
+        const licensePlate = text;
+        const exit = new ExitModel({ licensePlate });
+        await exit.save();
+        awaitingLicensePlate[chatId] = false;
+        return bot.sendMessage(
+          chatId,
+          `Виїзд автомобіля з номером ${licensePlate} успішно зареєстровано!`,
+        );
+      }
+
       if (text === "/start") {
         return bot.sendMessage(
           chatId,
-          `Ласкаво просимо до системи реєстрації виїзду автомобілів! Використовуйте команду /register для реєстрації виїзду, або /view_exits для перегляду всіх виїздів.`,
+          "Ласкаво просимо до системи реєстрації виїзду автомобілів! Використовуйте команду /register для реєстрації виїзду, або /view_exits для перегляду всіх виїздів.",
         );
       }
       if (text === "/register") {
-        await bot.sendMessage(chatId, "Введіть номерний знак автомобіля:");
-        bot.once("message", async (msg) => {
-          const licensePlate = msg.text;
-          const exit = new ExitModel({ licensePlate });
-          await exit.save();
-          return bot.sendMessage(
-            chatId,
-            `Виїзд автомобіля з номером ${licensePlate} успішно зареєстровано!`,
-          );
-        });
-        return;
+        awaitingLicensePlate[chatId] = true;
+        return bot.sendMessage(chatId, "Введіть номерний знак автомобіля:");
       }
       if (text === "/view_exits") {
         const exits = await ExitModel.find();
@@ -63,9 +68,9 @@ const start = async () => {
         });
         return bot.sendMessage(chatId, response);
       }
-      return bot.sendMessage(chatId, "Я тебе не розумію, спробуй ще раз!)");
+      return bot.sendMessage(chatId, "Не вдалося знайти відповідну команду!");
     } catch (e) {
-      return bot.sendMessage(chatId, "Сталася якась помилка!)");
+      return bot.sendMessage(chatId, "Сталася якась помилка!");
     }
   });
 };
